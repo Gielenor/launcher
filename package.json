@@ -1,0 +1,94 @@
+{
+  "name": "gielenor-launcher",
+  "version": "1.0.0",
+  "protocols": {
+    "schemes": [
+      "gielenor"
+    ],
+    "privileged": true
+  },
+  "description": "",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "dist": "electron-builder --publish never",
+    "release": "electron-builder --publish always"
+  },
+  "keywords": [],
+  "author": "manoel <joaomanoel.ms.br@gmail.com>",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "^39.2.7",
+    "electron-builder": "^24.13.3"
+  },
+  "dependencies": {
+    "electron-updater": "^6.1.8"
+  },
+  "build": {
+    "appId": "com.gielenor.launcher",
+    "productName": "Gielenor Launcher",
+    "asar": true,
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Gielenor",
+        "repo": "launcher"
+      }
+    ],
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "src/**",
+      "package.json",
+      "!**/node_modules/**",
+      "!**/dist/**"
+    ],
+    "extraResources": [
+      {
+        "from": "src/jre",
+        "to": "jre",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "src/assets",
+        "to": "assets",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true
+    },
+    "mac": {
+      "icon": "build/icon.icns",
+      "target": [
+        "dmg"
+      ],
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Game",
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    }
+  }
+}
