@@ -103,7 +103,8 @@ function runLauncherAutoUpdate(mainWindow) {
 }
 
 function quitAndInstallLauncher() {
-  autoUpdater.quitAndInstall();
+  // Silent install (no installer UI) + relaunch after update.
+  autoUpdater.quitAndInstall(true, true);
 }
 
 module.exports = { runLauncherAutoUpdate, quitAndInstallLauncher };

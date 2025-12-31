@@ -4,8 +4,18 @@ const statusEl = document.getElementById('status');
 const phaseTitleEl = document.getElementById('phase-title');
 const logoEl = document.querySelector('.logo');
 
-if (logoEl && window.launcher && typeof window.launcher.getIconUrl === 'function') {
-  logoEl.src = window.launcher.getIconUrl();
+if (logoEl) {
+  const fallbackSrc = '../assets/imagens/icone.png';
+  if (window.launcher && typeof window.launcher.getIconUrl === 'function') {
+    try {
+      const iconUrl = window.launcher.getIconUrl();
+      logoEl.src = iconUrl || fallbackSrc;
+    } catch (error) {
+      logoEl.src = fallbackSrc;
+    }
+  } else {
+    logoEl.src = fallbackSrc;
+  }
 }
 
 if (window.launcher) {
@@ -24,4 +34,8 @@ if (window.launcher) {
       phaseTitleEl.textContent = message || '';
     }
   });
+
+  if (typeof window.launcher.notifyReady === 'function') {
+    window.launcher.notifyReady();
+  }
 }

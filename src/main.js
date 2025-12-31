@@ -1,11 +1,12 @@
 const path = require('path');
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const { checkForUpdatesAndRunClient } = require('./updater');
 const { runLauncherAutoUpdate, quitAndInstallLauncher } = require('./auto-update');
 const { getAppIconPath } = require('./paths');
 const { PHASE, STATUS } = require('./status-messages');
 
 let mainWindow = null;
+let isQuittingForUpdate = false;
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -63,30 +64,69 @@ async function runGameClientUpdateAndLaunch(windowRef) {
 
 app.whenReady().then(async () => {
   createWindow();
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('phase-message', PHASE.STARTING);
-    mainWindow.webContents.send('status-message', STATUS.OPENING_LAUNCHER);
-  }
-
-  if (process.platform === 'win32') {
-    app.setAsDefaultProtocolClient('gielenor');
-  }
-
-  // 1) Launcher auto-update runs first.
-  const updateResult = await runLauncherAutoUpdate(mainWindow);
-  if (updateResult.status === 'downloaded') {
-    quitAndInstallLauncher();
+  if (!mainWindow || mainWindow.isDestroyed()) {
     return;
   }
 
-  // 2) No launcher update (or error) -> continue with game client flow.
-  await runGameClientUpdateAndLaunch(mainWindow);
-  app.quit();
+  let hasStarted = false;
+  const startFlow = async () => {
+    if (hasStarted || !mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+    hasStarted = true;
+
+    mainWindow.webContents.send('phase-message', PHASE.STARTING);
+    mainWindow.webContents.send('status-message', STATUS.OPENING_LAUNCHER);
+
+    if (process.platform === 'win32') {
+      app.setAsDefaultProtocolClient('gielenor');
+    }
+
+    // 1) Launcher auto-update runs first.
+    const updateResult = await runLauncherAutoUpdate(mainWindow);
+    if (updateResult.status === 'downloaded') {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('status-message', 'Updating launcher...');
+        mainWindow.close();
+      }
+      quitAndInstallLauncher();
+      return;
+    }
+
+    // 2) No launcher update (or error) -> continue with game client flow.
+    await runGameClientUpdateAndLaunch(mainWindow);
+    app.quit();
+  };
+
+  ipcMain.once('renderer-ready', async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+    await startFlow();
+  });
+
+  mainWindow.webContents.once('did-finish-load', () => {
+    setTimeout(() => {
+      startFlow();
+    }, 300);
+  });
 });
 
 app.on('window-all-closed', () => {
+  if (isQuittingForUpdate) {
+    app.exit(0);
+    return;
+  }
   if (process.platform !== 'darwin') {
     app.quit();
+  }
+});
+
+app.on('before-quit-for-update', () => {
+  isQuittingForUpdate = true;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.removeAllListeners('close');
+    mainWindow.destroy();
   }
 });
 

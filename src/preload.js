@@ -12,6 +12,9 @@ function resolveIconPath() {
 
 contextBridge.exposeInMainWorld('launcher', {
   getIconUrl: () => resolveIconPath(),
+  notifyReady: () => {
+    ipcRenderer.send('renderer-ready');
+  },
   onDownloadProgress: (callback) => {
     ipcRenderer.on('download-progress', (_event, percent) => callback(percent));
   },

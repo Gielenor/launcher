@@ -16,7 +16,13 @@ const STATUS = {
   DOWNLOADING_GAME_CLIENT: 'Downloading game client...',
   STARTING_CLIENT: 'Starting client...',
   STARTING_CORE_CLASSES: 'Starting core classes...',
-  RATE_LIMIT_RETRY: 'GitHub rate limit. Retrying in {seconds}s...'
+  RATE_LIMIT_RETRY: 'GitHub rate limit. Retrying in {seconds}s...',
+  CHECKING_JAVA_RUNTIME: 'Checking Java runtime for {platform}...',
+  JAVA_RUNTIME_FOUND: 'Java runtime ready for {platform}.',
+  DOWNLOADING_JAVA_RUNTIME: 'Downloading Java runtime for {platform}...',
+  EXTRACTING_JAVA_RUNTIME: 'Extracting Java runtime...',
+  VERIFYING_JAVA_RUNTIME: 'Verifying Java runtime...',
+  STARTING_GAME: 'Starting game...'
 };
 
 function formatStatus(template, params) {

@@ -3,6 +3,7 @@ const https = require('https');
 const path = require('path');
 const { spawn } = require('child_process');
 const { app, dialog } = require('electron');
+const { ensureJreInstalled } = require('./jre-installer');
 const { PHASE, STATUS, formatStatus } = require('./status-messages');
 
 const jarFileNamePrefix = 'Gielenor_v';
@@ -17,41 +18,6 @@ function getClientDirectory() {
   const clientDir = path.join(app.getPath('userData'), 'Gielenor', 'client');
   fs.mkdirSync(clientDir, { recursive: true });
   return clientDir;
-}
-
-function getJreBasePath() {
-  // In packaged builds the JRE lives under process.resourcesPath; in dev we use src/.
-  const base = app.isPackaged ? process.resourcesPath : __dirname;
-  return path.join(base, 'jre');
-}
-
-function getJrePath() {
-  const jreBasePath = getJreBasePath();
-  const candidates = [];
-
-  if (process.platform === 'win32') {
-    candidates.push(path.join(jreBasePath, 'win'));
-  } else if (process.platform === 'darwin') {
-    candidates.push(path.join(jreBasePath, 'mac'));
-  } else {
-    candidates.push(path.join(jreBasePath, 'linux'));
-  }
-
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
-  }
-
-  return candidates[0];
-}
-
-function getJavaExecutablePath() {
-  const jrePath = getJrePath();
-  if (process.platform === 'win32') {
-    return path.join(jrePath, 'bin', 'java.exe');
-  }
-  return path.join(jrePath, 'bin', 'java');
 }
 
 function compareVersions(a, b) {
@@ -249,8 +215,8 @@ function isValidJar(pathToJar) {
   }
 }
 
-function runClient(jarPath) {
-  const javaPath = getJavaExecutablePath();
+async function runClient(mainWindow, jarPath) {
+  const javaPath = await ensureJreInstalled(mainWindow);
   const child = spawn(javaPath, ['-jar', jarPath], {
     detached: true,
     stdio: 'ignore'
@@ -258,10 +224,21 @@ function runClient(jarPath) {
   child.unref();
 }
 
-async function handleApiFailure() {
+async function safeRunClient(mainWindow, jarPath) {
+  try {
+    await runClient(mainWindow, jarPath);
+    return true;
+  } catch (error) {
+    console.error('Failed to launch client:', error);
+    dialog.showErrorBox('Erro', 'Falha ao preparar o Java. Tente novamente.');
+    return false;
+  }
+}
+
+async function handleApiFailure(mainWindow) {
   const localJarPath = getLocalClientJarPath();
   if (localJarPath && fs.existsSync(localJarPath)) {
-    runClient(localJarPath);
+    await safeRunClient(mainWindow, localJarPath);
     return;
   }
   dialog.showErrorBox('Erro', 'Nao foi possivel verificar atualizacoes e nenhum client local foi encontrado.');
@@ -298,7 +275,7 @@ async function checkForUpdatesAndRunClient(mainWindow) {
     downloadUrl = asset.browser_download_url;
   } catch (error) {
     console.log(error);
-    await handleApiFailure();
+    await handleApiFailure(mainWindow);
     return;
   }
 
@@ -311,10 +288,10 @@ async function checkForUpdatesAndRunClient(mainWindow) {
         dialog.showErrorBox('Erro', 'Client local invalido. Reinstale o launcher.');
         return;
       }
-      runClient(localJarPath);
+      await safeRunClient(mainWindow, localJarPath);
       return;
     }
-    await handleApiFailure();
+    await handleApiFailure(mainWindow);
     return;
   }
 
@@ -349,13 +326,15 @@ async function checkForUpdatesAndRunClient(mainWindow) {
     if (!mainWindow.isDestroyed()) {
       sendPhase(PHASE.LAUNCHING_CLIENT);
       sendStatus(STATUS.STARTING_CORE_CLASSES);
-      mainWindow.close();
     }
     if (!isValidJar(destinationPath)) {
       dialog.showErrorBox('Erro', 'Falha ao baixar o client. Tente novamente.');
       return;
     }
-    runClient(destinationPath);
+    const launched = await safeRunClient(mainWindow, destinationPath);
+    if (launched && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.close();
+    }
   } catch (error) {
     if (controller.signal.aborted) {
       return;
@@ -366,7 +345,7 @@ async function checkForUpdatesAndRunClient(mainWindow) {
     }
     const fallbackJar = localJarPath;
     if (fallbackJar && isValidJar(fallbackJar)) {
-      runClient(fallbackJar);
+      await safeRunClient(mainWindow, fallbackJar);
       return;
     }
     dialog.showErrorBox('Erro', 'Falha ao baixar o client e nenhum client local foi encontrado.');
@@ -379,8 +358,6 @@ module.exports = {
   checkForUpdatesAndRunClient,
   compareVersions,
   getClientDirectory,
-  getJavaExecutablePath,
-  getJrePath,
   getLocalClientJarPath,
   getLocalClientVersion
 };
