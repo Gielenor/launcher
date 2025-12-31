@@ -30,6 +30,10 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -39,6 +43,11 @@ function createWindow() {
 
 app.whenReady().then(async () => {
   createWindow();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('phase-message', 'Starting');
+    mainWindow.webContents.send('status-message', 'Opening launcher...');
+  }
+  // Launcher auto-update (GitHub releases) runs alongside the client update flow.
   setupAutoUpdater(mainWindow);
   await checkForUpdatesAndRunClient(mainWindow);
 

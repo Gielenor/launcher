@@ -218,13 +218,19 @@ async function checkForUpdatesAndRunClient(mainWindow) {
       mainWindow.webContents.send('status-message', message);
     }
   };
+  const sendPhase = (message) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('phase-message', message);
+    }
+  };
 
   let latestVersion = null;
   let downloadUrl = null;
   let expectedJarName = null;
 
   try {
-    sendStatus('Checking for updates...');
+    sendPhase('Client update');
+    sendStatus('Checking client updates...');
     const release = await fetchLatestRelease();
     latestVersion = release.tag_name;
     expectedJarName = `${jarFileNamePrefix}${latestVersion}${jarFileExtension}`;
@@ -242,6 +248,8 @@ async function checkForUpdatesAndRunClient(mainWindow) {
   const needsUpdate = !localVersion || compareVersions(latestVersion, localVersion) > 0;
   if (!needsUpdate) {
     if (localJarPath) {
+      sendPhase('Launching client');
+      sendStatus('Starting client...');
       runClient(localJarPath);
       app.quit();
       return;
@@ -257,6 +265,7 @@ async function checkForUpdatesAndRunClient(mainWindow) {
   }
 
   mainWindow.show();
+  sendPhase('Client update');
   sendStatus('Downloading client...');
 
   const clientDir = getClientDirectory();
@@ -280,6 +289,7 @@ async function checkForUpdatesAndRunClient(mainWindow) {
     await downloadJar(downloadUrl, destinationPath, onProgress, controller.signal);
     mainWindow.removeListener('close', onCancel);
     if (!mainWindow.isDestroyed()) {
+      sendPhase('Launching client');
       sendStatus('Starting core classes...');
       mainWindow.close();
     }
