@@ -1,6 +1,7 @@
 const { autoUpdater } = require('electron-updater');
 const { app } = require('electron');
 const log = require('electron-log');
+const { PHASE, STATUS } = require('./status-messages');
 
 function sendStatus(mainWindow, message) {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -48,42 +49,42 @@ function runLauncherAutoUpdate(mainWindow) {
 
     const onChecking = () => {
       log.info('checking-for-update');
-      sendPhase(mainWindow, 'Launcher update');
-      sendStatus(mainWindow, 'Checking for launcher updates...');
+      sendPhase(mainWindow, PHASE.LAUNCHER_UPDATE);
+      sendStatus(mainWindow, STATUS.CHECKING_LAUNCHER_UPDATES);
     };
 
     const onAvailable = (info) => {
       log.info('update-available', info);
-      sendPhase(mainWindow, 'Launcher update');
-      sendStatus(mainWindow, 'Downloading launcher update...');
+      sendPhase(mainWindow, PHASE.LAUNCHER_UPDATE);
+      sendStatus(mainWindow, STATUS.DOWNLOADING_LAUNCHER_UPDATE);
     };
 
     const onNotAvailable = (info) => {
       log.info('update-not-available', info);
-      sendPhase(mainWindow, 'Launcher update');
-      sendStatus(mainWindow, 'Launcher is up to date.');
+      sendPhase(mainWindow, PHASE.LAUNCHER_UPDATE);
+      sendStatus(mainWindow, STATUS.LAUNCHER_UP_TO_DATE);
       finalize({ status: 'no-update' });
     };
 
     const onError = (error) => {
       log.error('auto-update error', error);
-      sendPhase(mainWindow, 'Launcher update');
-      sendStatus(mainWindow, 'Launcher update error. See logs.');
+      sendPhase(mainWindow, PHASE.LAUNCHER_UPDATE);
+      sendStatus(mainWindow, STATUS.LAUNCHER_UPDATE_ERROR);
       finalize({ status: 'error', error });
     };
 
     const onProgress = (progress) => {
       const percent = Math.round(progress.percent || 0);
       log.info('download-progress', percent, progress.transferred, progress.total);
-      sendPhase(mainWindow, 'Launcher update');
+      sendPhase(mainWindow, PHASE.LAUNCHER_UPDATE);
       sendProgress(mainWindow, percent);
-      sendStatus(mainWindow, 'Downloading launcher update...');
+      sendStatus(mainWindow, STATUS.DOWNLOADING_LAUNCHER_UPDATE);
     };
 
     const onDownloaded = (info) => {
       log.info('update-downloaded', info);
-      sendPhase(mainWindow, 'Launcher update');
-      sendStatus(mainWindow, 'Launcher update downloaded. It will install on exit.');
+      sendPhase(mainWindow, PHASE.LAUNCHER_UPDATE);
+      sendStatus(mainWindow, STATUS.LAUNCHER_UPDATE_DOWNLOADED);
       finalize({ status: 'downloaded', info });
     };
 
@@ -95,8 +96,8 @@ function runLauncherAutoUpdate(mainWindow) {
     autoUpdater.on('download-progress', onProgress);
     autoUpdater.on('update-downloaded', onDownloaded);
 
-    sendPhase(mainWindow, 'Launcher update');
-    sendStatus(mainWindow, 'Checking for launcher updates...');
+    sendPhase(mainWindow, PHASE.LAUNCHER_UPDATE);
+    sendStatus(mainWindow, STATUS.CHECKING_LAUNCHER_UPDATES);
     autoUpdater.checkForUpdatesAndNotify();
   });
 }

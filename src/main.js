@@ -3,8 +3,23 @@ const { app, BrowserWindow } = require('electron');
 const { checkForUpdatesAndRunClient } = require('./updater');
 const { runLauncherAutoUpdate, quitAndInstallLauncher } = require('./auto-update');
 const { getAppIconPath } = require('./paths');
+const { PHASE, STATUS } = require('./status-messages');
 
 let mainWindow = null;
+
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
+      mainWindow.focus();
+    }
+  });
+}
 
 function createWindow() {
   const iconPath = getAppIconPath();
@@ -23,8 +38,9 @@ function createWindow() {
     backgroundColor: '#111111',
     icon: iconPath,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
+      preload: path.join(__dirname, 'preload.js'),
+      nodeIntegration: false,
+      contextIsolation: true
     }
   });
 
@@ -48,8 +64,8 @@ async function runGameClientUpdateAndLaunch(windowRef) {
 app.whenReady().then(async () => {
   createWindow();
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('phase-message', 'Starting');
-    mainWindow.webContents.send('status-message', 'Opening launcher...');
+    mainWindow.webContents.send('phase-message', PHASE.STARTING);
+    mainWindow.webContents.send('status-message', STATUS.OPENING_LAUNCHER);
   }
 
   if (process.platform === 'win32') {

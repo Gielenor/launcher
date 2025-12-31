@@ -3,10 +3,15 @@ const https = require('https');
 const path = require('path');
 const { spawn } = require('child_process');
 const { app, dialog } = require('electron');
+const { PHASE, STATUS, formatStatus } = require('./status-messages');
 
 const jarFileNamePrefix = 'Gielenor_v';
 const jarFileExtension = '.jar';
 const latestReleaseUrl = 'https://api.github.com/repos/Gielenor/client/releases/latest';
+const githubBaseHeaders = {
+  'User-Agent': 'Gielenor-Launcher',
+  'Accept': 'application/vnd.github+json'
+};
 
 function getClientDirectory() {
   const clientDir = path.join(app.getPath('userData'), 'Gielenor', 'client');
@@ -96,25 +101,26 @@ function fetchLatestRelease() {
   return new Promise((resolve, reject) => {
     const request = https.get(
       latestReleaseUrl,
-      {
-        headers: {
-          'User-Agent': 'Gielenor-Launcher'
-        }
-      },
+      { headers: githubBaseHeaders },
       (response) => {
         let data = '';
         response.on('data', (chunk) => {
           data += chunk;
         });
         response.on('end', () => {
-          if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
+          const statusCode = response.statusCode || 0;
+          const headers = response.headers || {};
+          if (statusCode >= 200 && statusCode < 300) {
             try {
-              resolve(JSON.parse(data));
+              resolve({ data: JSON.parse(data), statusCode, headers });
             } catch (error) {
               reject(error);
             }
           } else {
-            reject(new Error(`GitHub API error: ${response.statusCode}`));
+            const err = new Error(`GitHub API error: ${statusCode}`);
+            err.statusCode = statusCode;
+            err.headers = headers;
+            reject(err);
           }
         });
       }
@@ -125,6 +131,49 @@ function fetchLatestRelease() {
       request.destroy(new Error('GitHub API timeout'));
     });
   });
+}
+
+function parseRetryAfterSeconds(headers) {
+  const retryAfter = Number(headers['retry-after']);
+  if (Number.isFinite(retryAfter) && retryAfter > 0) {
+    return retryAfter;
+  }
+  const reset = Number(headers['x-ratelimit-reset']);
+  if (Number.isFinite(reset) && reset > 0) {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    return Math.max(0, reset - nowSeconds);
+  }
+  return null;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function fetchLatestReleaseWithRetry(sendStatus, maxAttempts) {
+  let attempt = 0;
+  while (attempt < maxAttempts) {
+    attempt += 1;
+    try {
+      const response = await fetchLatestRelease();
+      return response.data;
+    } catch (error) {
+      const statusCode = error.statusCode || 0;
+      const headers = error.headers || {};
+      const isRateLimit = statusCode === 403 || statusCode === 429;
+      if (!isRateLimit || attempt >= maxAttempts) {
+        throw error;
+      }
+      const retryAfterSeconds = parseRetryAfterSeconds(headers);
+      const baseDelayMs = Math.min(30000, 1500 * attempt);
+      const delayMs = retryAfterSeconds ? (retryAfterSeconds + 1) * 1000 : baseDelayMs;
+      sendStatus(formatStatus(STATUS.RATE_LIMIT_RETRY, { seconds: Math.ceil(delayMs / 1000) }));
+      await sleep(delayMs);
+    }
+  }
+  throw new Error('GitHub API retries exhausted');
 }
 
 function downloadJar(downloadUrl, destinationPath, onProgress, abortSignal) {
@@ -190,6 +239,16 @@ function downloadJar(downloadUrl, destinationPath, onProgress, abortSignal) {
   });
 }
 
+function isValidJar(pathToJar) {
+  try {
+    if (!fs.existsSync(pathToJar)) return false;
+    const stats = fs.statSync(pathToJar);
+    return stats.isFile() && stats.size > 0;
+  } catch (error) {
+    return false;
+  }
+}
+
 function runClient(jarPath) {
   const javaPath = getJavaExecutablePath();
   const child = spawn(javaPath, ['-jar', jarPath], {
@@ -227,9 +286,9 @@ async function checkForUpdatesAndRunClient(mainWindow) {
   let expectedJarName = null;
 
   try {
-    sendPhase('Client update');
-    sendStatus('Checking for game updates...');
-    const release = await fetchLatestRelease();
+    sendPhase(PHASE.CLIENT_UPDATE);
+    sendStatus(STATUS.CHECKING_GAME_UPDATES);
+    const release = await fetchLatestReleaseWithRetry(sendStatus, 3);
     latestVersion = release.tag_name;
     expectedJarName = `${jarFileNamePrefix}${latestVersion}${jarFileExtension}`;
     const asset = (release.assets || []).find((item) => item.name === expectedJarName);
@@ -246,8 +305,12 @@ async function checkForUpdatesAndRunClient(mainWindow) {
   const needsUpdate = !localVersion || compareVersions(latestVersion, localVersion) > 0;
   if (!needsUpdate) {
     if (localJarPath) {
-      sendPhase('Launching client');
-      sendStatus('Starting client...');
+      sendPhase(PHASE.LAUNCHING_CLIENT);
+      sendStatus(STATUS.STARTING_CLIENT);
+      if (!isValidJar(localJarPath)) {
+        dialog.showErrorBox('Erro', 'Client local invalido. Reinstale o launcher.');
+        return;
+      }
       runClient(localJarPath);
       return;
     }
@@ -261,8 +324,8 @@ async function checkForUpdatesAndRunClient(mainWindow) {
   }
 
   mainWindow.show();
-  sendPhase('Client update');
-  sendStatus('Downloading game client...');
+  sendPhase(PHASE.CLIENT_UPDATE);
+  sendStatus(STATUS.DOWNLOADING_GAME_CLIENT);
 
   const clientDir = getClientDirectory();
   const destinationPath = path.join(clientDir, expectedJarName);
@@ -284,9 +347,13 @@ async function checkForUpdatesAndRunClient(mainWindow) {
     await downloadJar(downloadUrl, destinationPath, onProgress, controller.signal);
     mainWindow.removeListener('close', onCancel);
     if (!mainWindow.isDestroyed()) {
-      sendPhase('Launching client');
-      sendStatus('Starting core classes...');
+      sendPhase(PHASE.LAUNCHING_CLIENT);
+      sendStatus(STATUS.STARTING_CORE_CLASSES);
       mainWindow.close();
+    }
+    if (!isValidJar(destinationPath)) {
+      dialog.showErrorBox('Erro', 'Falha ao baixar o client. Tente novamente.');
+      return;
     }
     runClient(destinationPath);
   } catch (error) {
@@ -298,7 +365,7 @@ async function checkForUpdatesAndRunClient(mainWindow) {
       mainWindow.close();
     }
     const fallbackJar = localJarPath;
-    if (fallbackJar && fs.existsSync(fallbackJar)) {
+    if (fallbackJar && isValidJar(fallbackJar)) {
       runClient(fallbackJar);
       return;
     }
