@@ -1,6 +1,6 @@
 {
   "name": "gielenor-launcher",
-  "version": "1.0.2",
+  "version": "1.0.6",
   "protocols": {
     "schemes": [
       "gielenor"

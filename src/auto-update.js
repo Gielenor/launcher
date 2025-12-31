@@ -20,9 +20,10 @@ function sendProgress(mainWindow, percent) {
   }
 }
 
-function setupAutoUpdater(mainWindow) {
+function runLauncherAutoUpdate(mainWindow) {
   autoUpdater.logger = log;
-  autoUpdater.logger.transports.file.level = 'info';
+  autoUpdater.logger.transports.file.level = 'warn';
+  autoUpdater.logger.transports.file.fileName = 'main.txt';
   autoUpdater.logger.transports.console.level = 'info';
 
   autoUpdater.autoDownload = true;
@@ -34,51 +35,74 @@ function setupAutoUpdater(mainWindow) {
   const isDev = !app.isPackaged;
   if (isDev && !process.env.FORCE_LAUNCHER_UPDATE) {
     log.info('Auto-updater disabled in dev. Set FORCE_LAUNCHER_UPDATE=1 to enable.');
-    return;
+    return Promise.resolve({ status: 'skipped' });
   }
 
-  // Flow: check -> download -> install on exit.
-  autoUpdater.on('checking-for-update', () => {
-    log.info('checking-for-update');
+  return new Promise((resolve) => {
+    let resolved = false;
+    const finalize = (result) => {
+      if (resolved) return;
+      resolved = true;
+      resolve(result);
+    };
+
+    const onChecking = () => {
+      log.info('checking-for-update');
+      sendPhase(mainWindow, 'Launcher update');
+      sendStatus(mainWindow, 'Checking for launcher updates...');
+    };
+
+    const onAvailable = (info) => {
+      log.info('update-available', info);
+      sendPhase(mainWindow, 'Launcher update');
+      sendStatus(mainWindow, 'Downloading launcher update...');
+    };
+
+    const onNotAvailable = (info) => {
+      log.info('update-not-available', info);
+      sendPhase(mainWindow, 'Launcher update');
+      sendStatus(mainWindow, 'Launcher is up to date.');
+      finalize({ status: 'no-update' });
+    };
+
+    const onError = (error) => {
+      log.error('auto-update error', error);
+      sendPhase(mainWindow, 'Launcher update');
+      sendStatus(mainWindow, 'Launcher update error. See logs.');
+      finalize({ status: 'error', error });
+    };
+
+    const onProgress = (progress) => {
+      const percent = Math.round(progress.percent || 0);
+      log.info('download-progress', percent, progress.transferred, progress.total);
+      sendPhase(mainWindow, 'Launcher update');
+      sendProgress(mainWindow, percent);
+      sendStatus(mainWindow, 'Downloading launcher update...');
+    };
+
+    const onDownloaded = (info) => {
+      log.info('update-downloaded', info);
+      sendPhase(mainWindow, 'Launcher update');
+      sendStatus(mainWindow, 'Launcher update downloaded. It will install on exit.');
+      finalize({ status: 'downloaded', info });
+    };
+
+    // Flow: check -> download -> install on exit.
+    autoUpdater.on('checking-for-update', onChecking);
+    autoUpdater.on('update-available', onAvailable);
+    autoUpdater.on('update-not-available', onNotAvailable);
+    autoUpdater.on('error', onError);
+    autoUpdater.on('download-progress', onProgress);
+    autoUpdater.on('update-downloaded', onDownloaded);
+
     sendPhase(mainWindow, 'Launcher update');
     sendStatus(mainWindow, 'Checking for launcher updates...');
+    autoUpdater.checkForUpdatesAndNotify();
   });
-
-  autoUpdater.on('update-available', (info) => {
-    log.info('update-available', info);
-    sendPhase(mainWindow, 'Launcher update');
-    sendStatus(mainWindow, 'Downloading launcher update...');
-  });
-
-  autoUpdater.on('update-not-available', (info) => {
-    log.info('update-not-available', info);
-    sendPhase(mainWindow, 'Launcher update');
-    sendStatus(mainWindow, 'Launcher is up to date.');
-  });
-
-  autoUpdater.on('error', (error) => {
-    log.error('auto-update error', error);
-    sendPhase(mainWindow, 'Launcher update');
-    sendStatus(mainWindow, 'Launcher update error. See logs.');
-  });
-
-  autoUpdater.on('download-progress', (progress) => {
-    const percent = Math.round(progress.percent || 0);
-    log.info('download-progress', percent, progress.transferred, progress.total);
-    sendPhase(mainWindow, 'Launcher update');
-    sendProgress(mainWindow, percent);
-    sendStatus(mainWindow, 'Downloading launcher update...');
-  });
-
-  autoUpdater.on('update-downloaded', (info) => {
-    log.info('update-downloaded', info);
-    sendPhase(mainWindow, 'Launcher update');
-    sendStatus(mainWindow, 'Launcher update downloaded. It will install on exit.');
-  });
-
-  sendPhase(mainWindow, 'Launcher update');
-  sendStatus(mainWindow, 'Checking for launcher updates...');
-  autoUpdater.checkForUpdates();
 }
 
-module.exports = { setupAutoUpdater };
+function quitAndInstallLauncher() {
+  autoUpdater.quitAndInstall();
+}
+
+module.exports = { runLauncherAutoUpdate, quitAndInstallLauncher };

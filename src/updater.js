@@ -203,11 +203,9 @@ async function handleApiFailure() {
   const localJarPath = getLocalClientJarPath();
   if (localJarPath && fs.existsSync(localJarPath)) {
     runClient(localJarPath);
-    app.quit();
     return;
   }
   dialog.showErrorBox('Erro', 'Nao foi possivel verificar atualizacoes e nenhum client local foi encontrado.');
-  app.quit();
 }
 
 async function checkForUpdatesAndRunClient(mainWindow) {
@@ -230,7 +228,7 @@ async function checkForUpdatesAndRunClient(mainWindow) {
 
   try {
     sendPhase('Client update');
-    sendStatus('Checking client updates...');
+    sendStatus('Checking for game updates...');
     const release = await fetchLatestRelease();
     latestVersion = release.tag_name;
     expectedJarName = `${jarFileNamePrefix}${latestVersion}${jarFileExtension}`;
@@ -251,7 +249,6 @@ async function checkForUpdatesAndRunClient(mainWindow) {
       sendPhase('Launching client');
       sendStatus('Starting client...');
       runClient(localJarPath);
-      app.quit();
       return;
     }
     await handleApiFailure();
@@ -260,13 +257,12 @@ async function checkForUpdatesAndRunClient(mainWindow) {
 
   if (!mainWindow) {
     dialog.showErrorBox('Erro', 'Janela de progresso nao inicializada.');
-    app.quit();
     return;
   }
 
   mainWindow.show();
   sendPhase('Client update');
-  sendStatus('Downloading client...');
+  sendStatus('Downloading game client...');
 
   const clientDir = getClientDirectory();
   const destinationPath = path.join(clientDir, expectedJarName);
@@ -280,7 +276,6 @@ async function checkForUpdatesAndRunClient(mainWindow) {
 
   const onCancel = () => {
     controller.abort();
-    app.quit();
   };
 
   mainWindow.once('close', onCancel);
@@ -294,7 +289,6 @@ async function checkForUpdatesAndRunClient(mainWindow) {
       mainWindow.close();
     }
     runClient(destinationPath);
-    app.quit();
   } catch (error) {
     if (controller.signal.aborted) {
       return;
@@ -306,11 +300,9 @@ async function checkForUpdatesAndRunClient(mainWindow) {
     const fallbackJar = localJarPath;
     if (fallbackJar && fs.existsSync(fallbackJar)) {
       runClient(fallbackJar);
-      app.quit();
       return;
     }
     dialog.showErrorBox('Erro', 'Falha ao baixar o client e nenhum client local foi encontrado.');
-    app.quit();
   } finally {
     mainWindow.removeListener('close', onCancel);
   }

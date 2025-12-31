@@ -1,7 +1,7 @@
 const path = require('path');
 const { app, BrowserWindow } = require('electron');
 const { checkForUpdatesAndRunClient } = require('./updater');
-const { setupAutoUpdater } = require('./auto-update');
+const { runLauncherAutoUpdate, quitAndInstallLauncher } = require('./auto-update');
 const { getAppIconPath } = require('./paths');
 
 let mainWindow = null;
@@ -41,19 +41,31 @@ function createWindow() {
   return mainWindow;
 }
 
+async function runGameClientUpdateAndLaunch(windowRef) {
+  await checkForUpdatesAndRunClient(windowRef);
+}
+
 app.whenReady().then(async () => {
   createWindow();
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('phase-message', 'Starting');
     mainWindow.webContents.send('status-message', 'Opening launcher...');
   }
-  // Launcher auto-update (GitHub releases) runs alongside the client update flow.
-  setupAutoUpdater(mainWindow);
-  await checkForUpdatesAndRunClient(mainWindow);
 
   if (process.platform === 'win32') {
     app.setAsDefaultProtocolClient('gielenor');
   }
+
+  // 1) Launcher auto-update runs first.
+  const updateResult = await runLauncherAutoUpdate(mainWindow);
+  if (updateResult.status === 'downloaded') {
+    quitAndInstallLauncher();
+    return;
+  }
+
+  // 2) No launcher update (or error) -> continue with game client flow.
+  await runGameClientUpdateAndLaunch(mainWindow);
+  app.quit();
 });
 
 app.on('window-all-closed', () => {
